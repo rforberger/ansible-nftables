@@ -1,0 +1,104 @@
+# /etc/nftables.conf
+flush ruleset
+
+# Covers IPv4 and IPv6
+table inet filter {
+
+    # This is due to one of the quirks with netfilter (same applies
+    # for iptables), you have to accept established and related
+    # connections explicitly. Making it a separate chain like this
+    # will allow us to quickly jump to it.
+    #
+    # We also allow ICMP for both v4 and v6.
+    chain global {
+            ct state established,related accept
+            ct state invalid drop
+            ip protocol icmp accept
+            ip6 nexthdr ipv6-icmp icmpv6 type { 135, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, echo-reply, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+    }
+
+    chain reject_politely {
+        reject with icmp type port-unreachable
+    }
+
+    # Control what is allowed into our services network
+    chain traffic_default_in {
+       {% if nftables.inbound_port_list.tcp is defined %}tcp dport { {{ nftables.inbound_port_list.tcp }} } ct state new accept{% endif %}
+
+       {% if nftables.inbound_port_list.udp is defined %}udp dport { {{ nftables.inbound_port_list.udp }} } ct state new accept{% endif %}
+
+       ip6 nexthdr icmpv6 ct state new accept
+    }
+
+    # repeat this for your subnets
+
+    # Here's where some interesting things happen.  This is where we
+    # control what is forwarded between subnets, including using the
+    # chains we defined previously.  Our default policy is drop.
+
+    chain forward {
+      type filter hook forward priority 0; policy drop;
+      # First accept established & related traffic, by jumping to
+      # our global chain
+      jump global
+
+      # Verdict maps! This saves me _several lines_ of rules!!11
+      # This could have been written line for line as well, I guess.
+
+      # Map the output interface to a chain.  So if traffic has been
+      # forwarded to this interface this is what we allow in, if
+      # that makes sense?
+
+      {% if nftables.purpose == "server" %}
+      {{ 'iifname vmap { docker0 : accept' if('docker0' in ansible_interfaces) }}{{ '}' if('docker0' in ansible_interfaces) }}
+      {{ 'oifname vmap { eth0 : accept' if('eth0' in ansible_interfaces) }}{{ '}' if('eth0' in ansible_interfaces) }}
+      {% endif %}
+      {% if nftables.purpose == "router" %}
+      {{ 'iifname vmap { wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', eth1 : accept' if('eth1' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ '}' if('wg0' in ansible_interfaces) }}
+      {{ 'oifname vmap { eth1 : accept }' if('eth1' in ansible_interfaces) }}
+      {% endif %}
+
+      log prefix "nft.forward.drop" flags all drop
+
+    }
+
+
+
+    # Control what is allowed on our firewall
+    chain incoming {
+        type filter hook input priority 0; policy drop;
+
+        iifname "lo" ip daddr != 127.0.0.0/8 ip daddr != {{ ansible_eth0.ipv4.address }} ip daddr != {{ ansible_eth1.ipv4.address }} {{ 'ip daddr != ' + ansible_wg0.ipv4.address if('wg0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient0.ipv4.address if('wgclient0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient1.ipv4.address if('wgclient1' in ansible_interfaces) }} drop
+        iifname "lo" ip6 daddr != [::1] drop
+
+        jump global
+
+        iifname lo accept
+        iifname vmap { lo: accept, {{ ansible_default_ipv4.interface }} : jump traffic_default_in {{ ', ' + nftables.lanlink + ' : accept' if(nftables.lanlink in ansible_interfaces) }}{{ ', wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', wgclient0 : accept' if('wgclient0' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ ', wgclient1 : accept' if('wgclient1' in ansible_interfaces) }} }
+        # Rejections should be nice
+        jump reject_politely
+        log prefix "nft.incoming.reject" flags all reject
+    }
+
+    # Control what is allowed out from our firewall itself.
+    chain outgoing {
+      type filter hook output priority 100; policy accept;
+    }
+}
+
+# Finally, NAT!
+table ip firewall {
+  chain prerouting {
+    type nat hook prerouting priority 0;
+  }
+
+  #### POSTROUTING
+  chain postrouting {
+    type nat hook postrouting priority 100;
+
+    # Here you can specify which nets that are allowed to do NAT.  For
+    # my own network I'm not allowing my IoT or management networks to
+    # reach the internet.
+  }
+
+}
