@@ -51,7 +51,8 @@ table inet filter {
 
       {% if nftables.purpose == "server" %}
       {{ 'iifname vmap { docker0 : accept' if('docker0' in ansible_interfaces) }}{{ '}' if('docker0' in ansible_interfaces) }}
-      {{ 'oifname vmap { eth0 : accept' if('eth0' in ansible_interfaces) }}{{ '}' if('eth0' in ansible_interfaces) }}
+      {{ 'iifname vmap { podman0 : accept' if('podman0' in ansible_interfaces) }}{{ '}' if('podman0' in ansible_interfaces) }}
+      {{ 'oifname vmap { ens3 : accept' if('ens3' in ansible_interfaces) }}{{ '}' if('ens3' in ansible_interfaces) }}
       {% endif %}
       {% if nftables.purpose == "router" %}
       {{ 'iifname vmap { wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', eth1 : accept' if('eth1' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ '}' if('wg0' in ansible_interfaces) }}
@@ -68,13 +69,13 @@ table inet filter {
     chain incoming {
         type filter hook input priority 0; policy drop;
 
-        iifname "lo" ip daddr != 127.0.0.0/8 ip daddr != {{ ansible_eth0.ipv4.address }} ip daddr != {{ ansible_eth1.ipv4.address }} {{ 'ip daddr != ' + ansible_wg0.ipv4.address if('wg0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient0.ipv4.address if('wgclient0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient1.ipv4.address if('wgclient1' in ansible_interfaces) }} drop
+        iifname "lo" ip daddr != 127.0.0.0/8 ip daddr != {{ ansible_ens3.ipv4.address }} {{ 'ip daddr != {{ ansible_eth1.ipv4.address }}' if('eth1' in ansible_interfaces)  }} {{ 'ip daddr != ' + ansible_wg0.ipv4.address if('wg0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient0.ipv4.address if('wgclient0' in ansible_interfaces) }} {{ 'ip daddr != ' + ansible_wgclient1.ipv4.address if('wgclient1' in ansible_interfaces) }} drop
         iifname "lo" ip6 daddr != [::1] drop
 
         jump global
 
         iifname lo accept
-        iifname vmap { lo: accept, {{ ansible_default_ipv4.interface }} : jump traffic_default_in {{ ', ' + nftables.lanlink + ' : accept' if(nftables.lanlink in ansible_interfaces) }}{{ ', wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', wgclient0 : accept' if('wgclient0' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ ', wgclient1 : accept' if('wgclient1' in ansible_interfaces) }} }
+        iifname vmap { lo: accept, {{ ansible_default_ipv4.interface }} : jump traffic_default_in {{ ', ' + nftables.lanlink + ' : accept' if(nftables.lanlink in ansible_interfaces) }}{{ ', wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', wgclient0 : accept' if('wgclient0' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ ', podman0 : accept' if('podman0' in ansible_interfaces) }}{{ ', wgclient1 : accept' if('wgclient1' in ansible_interfaces) }} }
         # Rejections should be nice
         jump reject_politely
         log prefix "nft.incoming.reject" flags all reject
