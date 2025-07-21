@@ -59,10 +59,16 @@ table inet filter {
       {{ 'oifname vmap { eth1 : accept }' if('eth1' in ansible_interfaces) }}
       {% endif %}
 
+      # Allow traffic from Flannel bridge
+      iifname "cni0" accept
+      iifname "flannel.1" accept
+
+      # Accept pod-to-pod traffic
+      accept
+
       log prefix "nft.forward.drop" flags all drop
 
     }
-
 
 
     # Control what is allowed on our firewall
@@ -76,6 +82,16 @@ table inet filter {
 
         iifname lo accept
         iifname vmap { lo: accept, {{ ansible_default_ipv4.interface }} : jump traffic_default_in {{ ', ' + nftables.lanlink + ' : accept' if(nftables.lanlink in ansible_interfaces) }}{{ ', wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', wgclient0 : accept' if('wgclient0' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ ', podman0 : accept' if('podman0' in ansible_interfaces) }}{{ ', wgclient1 : accept' if('wgclient1' in ansible_interfaces) }} }
+
+        # Allow Flannel VXLAN (UDP 8472) and IP-in-IP (protocol 4)
+        # Allow local traffic on port 8472 via ens3
+        #iifname "{{ ansible_default_ipv4.interface }}" ip saddr 127.0.0.1 udp dport 8472 accept
+        #iifname "{{ ansible_default_ipv4.interface }}" ip saddr 127.0.0.1 ip protocol 4 accept
+
+        # Allow all on internal interfaces (adjust to your setup)
+        iifname "cni0" accept
+        iifname "flannel.1" accept
+
         # Rejections should be nice
         jump reject_politely
         log prefix "nft.incoming.reject" flags all reject
