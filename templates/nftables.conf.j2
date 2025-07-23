@@ -31,6 +31,9 @@ table inet filter {
 
        {% if nftables.inbound_port_list.udp is defined %}udp dport { {{ nftables.inbound_port_list.udp }} } ct state new accept{% endif %}
 
+       ip saddr 127.0.0.1 tcp dport 6443 accept
+       ip saddr 10.42.0.1/24 tcp dport 6443 accept
+
        ip6 nexthdr icmpv6 ct state new accept
     }
 
@@ -62,7 +65,8 @@ table inet filter {
       {{ 'iifname vmap { wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', eth1 : accept' if('eth1' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ '}' if('wg0' in ansible_interfaces) }}
       {{ 'oifname vmap { eth1 : accept }' if('eth1' in ansible_interfaces) }}
       {% endif %}
-
+      iifname flannel.1 accept
+      iifname cni0 accept
       ip protocol ipencap log prefix "IPIP blocked: " flags all
       #log prefix "nft.forward.drop" flags all drop
       log prefix "nftables DROP: " flags all
@@ -81,6 +85,9 @@ table inet filter {
 
         iifname lo accept
         iifname vmap { lo: accept, {{ ansible_default_ipv4.interface }} : jump traffic_default_in {{ ', ' + nftables.lanlink + ' : accept' if(nftables.lanlink in ansible_interfaces) }}{{ ', wg0 : accept' if('wg0' in ansible_interfaces) }}{{ ', wg1 : accept' if('wg1' in ansible_interfaces) }}{{ ', wg2 : accept' if('wg2' in ansible_interfaces) }}{{ ', wgclient0 : accept' if('wgclient0' in ansible_interfaces) }}{{ ', docker0 : accept' if('docker0' in ansible_interfaces) }}{{ ', podman0 : accept' if('podman0' in ansible_interfaces) }}{{ ', wgclient1 : accept' if('wgclient1' in ansible_interfaces) }} }
+
+        iifname flannel.1 accept
+        iifname cni0 accept
 
         ip protocol ipencap log prefix "IPIP blocked: " flags all
 
