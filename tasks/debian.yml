@@ -1,0 +1,26 @@
+---
+
+- name: install pkgs
+  ansible.builtin.apt:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+      - nftables
+
+- name: Write nftables.conf
+  ansible.builtin.template:
+    dest: "/etc/nftables.conf"
+    src: "{{ nftables.template_file }}"
+  notify:
+    - nftables
+
+- name: Enable nftables
+  ansible.builtin.service:
+    name: nftables
+    enabled: yes
+    state: started
+
+
+
+
