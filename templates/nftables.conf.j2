@@ -14,11 +14,7 @@ table inet filter {
             ct state established,related accept
             ct state invalid drop
             ip protocol icmp accept
-            ip6 nexthdr ipv6-icmp icmpv6 type {
-                1, 2, 3, 4,        # error messages
-                128, 129,          # echo req/reply
-                133, 134, 135, 136 # router and neighbor discovery
-            } accept
+            ip6 nexthdr ipv6-icmp icmpv6 type { 133, 135, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, echo-reply, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
     }
 
     chain reject_politely {
